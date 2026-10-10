@@ -1,0 +1,88 @@
+name: Publish Creeper Rewind v0.1.2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release-v0.1.2.yml
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    if: github.event.head_commit.message == 'release: publish v0.1.2'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download previously verified wheel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run download 38049309209 \
+            --repo "$GITHUB_REPOSITORY" \
+            --name creeper-rewind-wheel-py3.15 \
+            --dir dist
+
+      - name: Verify release asset
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          path = Path("dist/endstone_creeper_rewind-0.1.2-py3-none-any.whl")
+          assert path.is_file(), f"Missing wheel: {path}"
+          with zipfile.ZipFile(path) as archive:
+              names = archive.namelist()
+              metadata = next(x for x in names if x.endswith(".dist-info/METADATA"))
+              entry_points = next(x for x in names if x.endswith(".dist-info/entry_points.txt"))
+              info = archive.read(metadata).decode("utf-8")
+              entry = archive.read(entry_points).decode("utf-8")
+              assert "Version: 0.1.2" in info
+              assert "Requires-Python: >=3.11" in info
+              assert "creeper_rewind = endstone_creeper_rewind:CreeperRewindPlugin" in entry
+              assert "endstone_creeper_rewind/config.toml" in names
+          print(f"Verified release wheel: {path} ({path.stat().st_size} bytes)")
+          PY
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view v0.1.2 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v0.1.2 already exists; refusing to publish twice."
+            exit 1
+          fi
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          ## Creeper Rewind v0.1.2
+
+          An Endstone plugin that lets ordinary players restore nearby recent Creeper terrain damage.
+
+          ### Features
+          - Restore with `/cr`; inspect nearby records with `/cr info`; view full limitations with `/cr limits`.
+          - Preserve ordinary block states, skip positions already occupied by new blocks, and protect complex block-entity data.
+          - Destroy affected ordinary blocks without item drops to prevent duplication during rollback.
+          - Configure rollback lifetime, search radius, per-explosion limits, cooldowns, and snapshot persistence.
+
+          ### Changes
+          - Fixed the explosion-event borrowed-block lifetime crash from v0.1.0.
+          - Removed automatic post-restore warnings and expanded `/cr limits`.
+          - CI validates Python 3.11–3.15, including isolated wheel installation.
+
+          ### Compatibility
+          - Endstone API 0.11.
+          - Python 3.11–3.15; Python 3.15 requires a compatible native Endstone build.
+          - Live BDS/Endstone integration testing is separate from the CI test suite.
+
+          ### Installation
+          Download `endstone_creeper_rewind-0.1.2-py3-none-any.whl`, place it in the BDS `plugins/` directory, and restart the server.
+          NOTES
+          gh release create v0.1.2 \
+            "dist/endstone_creeper_rewind-0.1.2-py3-none-any.whl" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "1524533ed0c1efedb692c695936f6f5a3695be81" \
+            --title "Creeper Rewind v0.1.2" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
