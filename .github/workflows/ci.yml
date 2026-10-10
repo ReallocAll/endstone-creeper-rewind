@@ -8,11 +8,10 @@ on:
 
 permissions:
   contents: read
-  checks: read
 
 jobs:
   quality:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       # Keep Git initialization aligned with the repository's default branch.
       GIT_CONFIG_COUNT: '1'
@@ -24,16 +23,6 @@ jobs:
         python-version: ['3.11', '3.12', '3.13', '3.14', '3.15']
     steps:
       - uses: actions/checkout@v7.0.1
-      - name: Diagnose inherited annotations
-        if: matrix.python-version == '3.15'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          for check in 114204444688 114204444822 114204444875 114204444876 114204444918; do
-            echo "Annotations for check run $check:"
-            gh api "repos/${{ github.repository }}/check-runs/$check/annotations" \
-              --jq '.[] | {level: .annotation_level, title: .title, message: .message, path: .path, start_line: .start_line}'
-          done
       - uses: astral-sh/setup-uv@v10.3.0
         with:
           enable-cache: true
