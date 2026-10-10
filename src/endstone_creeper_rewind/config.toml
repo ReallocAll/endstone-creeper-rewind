@@ -1,0 +1,21 @@
+# Creeper Rewind 0.1.2
+
+# How long an explosion remains recoverable.
+max-age-seconds = 300
+
+# Ordinary players must be within this distance of the explosion center.
+search-radius = 20.0
+
+# Maximum number of terrain blocks controlled by one Creeper explosion.
+# Extra blocks are protected instead of being destroyed.
+max-blocks-per-explosion = 256
+
+# Per-player command cooldown.
+cooldown-seconds = 5
+
+# Maximum retained explosion records.
+max-records = 128
+
+# Save rollback records to snapshots.json so a restart does not immediately
+# destroy the recovery window.
+persist = true

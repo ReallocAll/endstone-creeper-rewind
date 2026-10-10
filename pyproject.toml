@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "endstone-creeper-rewind"
+version = "0.1.2"
+description = "Safe, player-accessible rollback for Creeper terrain damage on Endstone."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-only"
+authors = [{ name = "ReallocAll" }]
+keywords = ["endstone", "minecraft", "bedrock", "creeper", "rollback"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = []
+
+[project.entry-points."endstone"]
+creeper_rewind = "endstone_creeper_rewind:CreeperRewindPlugin"
+
+[project.urls]
+Repository = "https://github.com/ReallocAll/endstone-creeper-rewind"
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.11"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/endstone_creeper_rewind"]
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/README.md", "/LICENSE", "/pyproject.toml", "/CHANGELOG.md", "/AGENTS.md", "/tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
