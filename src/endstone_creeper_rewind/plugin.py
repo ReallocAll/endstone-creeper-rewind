@@ -10,7 +10,6 @@ from endstone.command import Command, CommandSender
 from endstone.event import ActorExplodeEvent, EventPriority, event_handler
 from endstone.plugin import Plugin
 
-
 AIR_TYPES = {
     "minecraft:air",
     "minecraft:cave_air",

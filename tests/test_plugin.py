@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 from conftest import Block, BorrowedBlock, Player
+
 from endstone_creeper_rewind.plugin import BlockSnapshot, CreeperListener, ExplosionSnapshot
 
 
