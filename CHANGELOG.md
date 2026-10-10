@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Drop Python 3.10 (EOL) and add Python 3.15 to the tested Python versions.
+- Raise the package minimum to Python 3.11 and update the Ruff target accordingly.
+
 ## 0.1.2
 
 - Removed the automatic post-restore warning and `show-limit-warning` option.

@@ -14,7 +14,7 @@ An Endstone plugin that allows ordinary players to undo recent Creeper terrain d
 
 ## Requirements and installation
 
-Endstone **0.11 API** and Python **3.10 or newer**. The plugin has no additional runtime Python dependencies. The package's `api_version` remains `0.11`; BDS-specific compatibility must be checked with the installed Endstone build.
+Endstone **0.11 API** and Python **3.11 or newer**. CI exercises Python **3.11–3.15**, including wheel installation and metadata checks. The plugin has no additional runtime Python dependencies. The package's `api_version` remains `0.11`; using Python 3.15 in a live server also requires an Endstone build with Python 3.15 support. The CI unit tests use Endstone test doubles and do not verify a live BDS/Endstone runtime.
 
 Install the prebuilt `.whl` into the Bedrock server's `plugins/` directory and restart the server. Alternatively, build locally:
 
