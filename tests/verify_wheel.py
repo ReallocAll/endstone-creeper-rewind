@@ -1,12 +1,14 @@
 """Run with the Python interpreter of a clean installation of the built wheel."""
 
+import tomllib
 from importlib.metadata import distribution
 from pathlib import Path
 
 
 def main() -> None:
     dist = distribution("endstone-creeper-rewind")
-    assert dist.version == "0.1.2"
+    project = tomllib.loads((Path(__file__).resolve().parents[1] / "pyproject.toml").read_text())["project"]
+    assert dist.version == project["version"]
     points = [ep for ep in dist.entry_points if ep.group == "endstone"]
     assert len(points) == 1
     assert points[0].name == "creeper_rewind"
