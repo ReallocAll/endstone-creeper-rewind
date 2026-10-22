@@ -1,3 +1,7 @@
+## 0.1.3 (2026-10-22)
+
+Consume and persist a restoration claim before world writes. Refuse restoration on failed or uncertain saves; interrupted claims are never replayed. Persist partial damage progress, avoid duplicate callbacks, and count per-block failures. Interrupted claims can lose unfinished repair rights.
+
 # Changelog
 
 ## Unreleased
