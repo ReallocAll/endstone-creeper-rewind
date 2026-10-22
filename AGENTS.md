@@ -7,4 +7,4 @@
 - Do not call server/world operations off the main thread. Unit tests do not replace a real Endstone/BDS integration test.
 - Keep `requires-python >=3.11` and the CI matrix for Python 3.11–3.15 aligned; do not claim live Endstone/BDS compatibility based on Python-only tests.
 - Use `uv`, Hatchling, Ruff, pytest. Build with `uv build --wheel` and inspect entry points and bundled `config.toml`.
-- Never commit world data, player records, snapshots, secrets, virtual environments or build artifacts. Work through PRs when there is existing shared history; CI must not publish a Release or PyPI package.
+- Never commit world data, player records, snapshots, secrets, virtual environments or build artifacts. Work through PRs when there is existing shared history; Publish GitHub Releases only through the authorized, version-validated release workflow after all CI checks pass. Never publish to PyPI.
