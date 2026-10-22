@@ -71,3 +71,26 @@ CI runs static checks, unit tests, wheel build, an isolated wheel installation a
 ## License
 
 GPL-3.0-only. This repository contains original plugin code and no vendored third-party code or media assets. The Endstone runtime is a separate Apache-2.0-licensed dependency.
+
+
+## One-shot persistence and failure semantics
+
+Before the first restoration write, the record is claimed in memory and its existing
+`restored` field is persisted as true. If that save fails or its outcome is uncertain,
+no restoration writes occur and the in-memory attempt stays consumed. A successfully
+persisted claim is never replayed after restart, including partial restoration errors.
+Interrupted claims intentionally lose any unfinished repair rights. Lookup, type access,
+and placement failures count as failed blocks; later occupied positions count as conflicts.
+A failed final cleanup save cannot resurrect the earlier acknowledged claim.
+
+Persistence writes and flushes a temporary file, calls file `fsync`, replaces the snapshot,
+and on POSIX also syncs the containing directory. Windows has no portable directory-sync
+acknowledgement in this implementation. This is not a transaction with the BDS world save,
+and no power-loss/hardware or real-BDS crash guarantee is claimed. With `persist=false`,
+one-shot consumption is memory-only. Existing snapshot schema is unchanged.
+
+Damage callbacks are one-shot too. Per-block failures preserve acknowledged partial progress
+and are not retried automatically. A process interruption, unsuccessful save, or native write
+that changes a block and then raises can lose repair rights. The plugin never guesses an
+ambiguous removal succeeded. Borrowed explosion wrappers, drop-free removal, full-state
+conflict checks, protected complex blocks, and main-thread world operations are unchanged.

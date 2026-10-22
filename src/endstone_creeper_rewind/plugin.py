@@ -1,4 +1,5 @@
 import json
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from math import dist
@@ -185,6 +186,7 @@ class CreeperRewindPlugin(Plugin):
         super().__init__()
         self._records: list[ExplosionSnapshot] = []
         self._next_id = 1
+        self._damage_attempted: set[int] = set()
         self._cooldowns: dict[str, float] = {}
 
     def on_enable(self) -> None:
@@ -254,6 +256,7 @@ class CreeperRewindPlugin(Plugin):
                     )
                 )
             self._records = records
+            self._damage_attempted = {record.id for record in records}
             self._next_id = max((record.id for record in records), default=0) + 1
             self.prune_records(save=False)
         except Exception as exc:
@@ -261,22 +264,32 @@ class CreeperRewindPlugin(Plugin):
             self._records = []
             self._next_id = 1
 
-    def _save_records(self) -> None:
+    def _save_records(self) -> bool:
         if not self.cfg_bool("persist", True):
-            return
+            return True
 
         try:
             path = self._records_path
             path.parent.mkdir(parents=True, exist_ok=True)
             payload = [asdict(record) for record in self._records]
             temp = path.with_suffix(".json.tmp")
-            temp.write_text(
-                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                encoding="utf-8",
-            )
+            with temp.open("w", encoding="utf-8") as output:
+                json.dump(payload, output, ensure_ascii=False, separators=(",", ":"))
+                output.flush()
+                os.fsync(output.fileno())
             temp.replace(path)
+            # POSIX directory sync acknowledges replacement metadata as well.
+            # Windows has no portable directory fsync in Python; see README.
+            if os.name == "posix":
+                directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
+            return True
         except Exception as exc:
             self.logger.error(f"Failed to save snapshots.json: {exc}")
+            return False
 
     def prune_records(self, *, save: bool = True) -> None:
         now = time.time()
@@ -291,6 +304,7 @@ class CreeperRewindPlugin(Plugin):
         if len(self._records) > max_records:
             self._records = self._records[-max_records:]
 
+        self._damage_attempted.intersection_update(record.id for record in self._records)
         if save:
             self._save_records()
 
@@ -344,29 +358,39 @@ class CreeperRewindPlugin(Plugin):
 
     def apply_simulated_damage(self, record_id: int) -> None:
         record = self.get_record(record_id)
-        if record is None or record.restored:
+        if record is None or record.restored or record.id in self._damage_attempted:
             return
+        self._damage_attempted.add(record.id)
 
         dimension = self.server.level.get_dimension(record.dimension)
         if dimension is None:
             return
 
         changed = 0
-        for snapshot in record.blocks:
-            block = dimension.get_block_at(snapshot.x, snapshot.y, snapshot.z)
-
-            # Do not erase a block that another plugin/player changed after the event.
-            if not self._same_block_state(block, snapshot):
-                continue
-
-            block.set_type("minecraft:air", apply_physics=False)
-            snapshot.damaged = True
-            changed += 1
-
-        if changed == 0:
-            # Nothing was actually damaged; keeping the record would only confuse players.
-            self._records = [r for r in self._records if r.id != record.id]
-        self._save_records()
+        try:
+            for snapshot in record.blocks:
+                if snapshot.damaged:
+                    continue  # Never repeat an already acknowledged removal.
+                try:
+                    block = dimension.get_block_at(snapshot.x, snapshot.y, snapshot.z)
+                    if not self._same_block_state(block, snapshot):
+                        continue
+                    block.set_type("minecraft:air", apply_physics=False)
+                    snapshot.damaged = True
+                    changed += 1
+                except Exception as exc:
+                    # An ambiguous native write is not automatically retried.
+                    self.logger.warning(
+                        f"Could not damage {record.dimension} "
+                        f"({snapshot.x}, {snapshot.y}, {snapshot.z}): {exc}"
+                    )
+        finally:
+            if changed == 0 and record.damaged_count == 0:
+                self._records = [r for r in self._records if r is not record]
+            # Preserve acknowledged partial progress even after a later fault.
+            # Damage and disk are not one transaction: interrupted/ambiguous
+            # removals may lose repair rights, but are never guessed successful.
+            self._save_records()
 
     # ---------- selection / rollback ----------
 
@@ -397,8 +421,19 @@ class CreeperRewindPlugin(Plugin):
         return best, best_distance
 
     def restore_record(self, record: ExplosionSnapshot) -> tuple[int, int, int]:
+        if record.restored or not any(current is record for current in self._records):
+            return 0, 0, record.damaged_count
         dimension = self.server.level.get_dimension(record.dimension)
         if dimension is None:
+            return 0, 0, record.damaged_count
+
+        # Claim in memory first, then acknowledge consumption on disk BEFORE
+        # any world write. A crash after this point loses unused rights instead
+        # of replaying a partially applied repair. Failed/ambiguous persistence
+        # also keeps the in-memory claim consumed; no world writes are allowed.
+        record.restored = True
+        if not self._save_records():
+            self.logger.error(f"Restore #{record.id} refused: consumption was not persisted.")
             return 0, 0, record.damaged_count
 
         restored = 0
@@ -411,14 +446,12 @@ class CreeperRewindPlugin(Plugin):
             if not snapshot.damaged:
                 continue
 
-            block = dimension.get_block_at(snapshot.x, snapshot.y, snapshot.z)
-
-            # Never overwrite anything a player/plugin has placed since the explosion.
-            if block.type not in AIR_TYPES:
-                conflicts += 1
-                continue
-
             try:
+                block = dimension.get_block_at(snapshot.x, snapshot.y, snapshot.z)
+                # Never overwrite a later player/plugin placement.
+                if block.type not in AIR_TYPES:
+                    conflicts += 1
+                    continue
                 data = self.server.create_block_data(snapshot.type, snapshot.states)
                 block.set_data(data, apply_physics=False)
                 restored += 1
@@ -431,8 +464,9 @@ class CreeperRewindPlugin(Plugin):
 
         # One-shot consumption is intentional. It prevents a player from restoring,
         # mining the blocks, and repeatedly reusing the same snapshot.
-        record.restored = True
         self.prune_records(save=False)
+        # Optional compaction; the acknowledged consumed record is already safe
+        # on disk even if this second save fails.
         self._save_records()
         return restored, conflicts, failed
 
@@ -481,8 +515,9 @@ class CreeperRewindPlugin(Plugin):
         self._cooldowns[sender.name] = now
 
         restored, conflicts, failed = self.restore_record(record)
+        outcome = "本次回溯记录已消费" if record.restored else "本次未执行回溯，记录未消费"
         sender.send_message(
-            f"§a苦力怕破坏已回溯：§f恢复 {restored} 个，"
+            f"§e{outcome}：§f恢复 {restored} 个，"
             f"跳过冲突 {conflicts} 个，失败 {failed} 个。"
         )
 
